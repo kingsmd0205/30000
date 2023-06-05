@@ -1,0 +1,83 @@
+import rospy
+from sensor_msgs.msg import PointCloud2
+from std_msgs.msg import Header
+from sensor_msgs import point_cloud2 as pc2
+import tf.transformations as tr
+import numpy as np
+from baxter_pykdl import baxter_kinematics
+import baxter_interface
+from PIDController import PIDController
+
+class BaxterDMP(object):
+    def __init__(self, limb):
+        self._arm = baxter_interface.limb.Limb(limb)
+        self._name = self._arm.joint_names()
+        self._kin = baxter_kinematics(limb)
+        self._joint_angle = dict()
+        self._filename1 = '/path/to/trajectory1.csv'  # 示例示教轨迹文件路径
+        self._filename2 = '/path/to/trajectory2.csv'  # 示例示教轨迹文件路径
+        self._main()
+
+    def set_joint_angles(self, angles):
+        joints = dict(zip(self._name, angles))
+        self._arm.move_to_joint_positions(joints, timeout=15.0)
+
+    def _trajectory(self, name, euler=True):
+        tra = np.loadtxt(name, delimiter=",", dtype=float)
+        Nt = len(tra)
+        if euler:
+            tra_euler = tra[0:Nt, 3:6]
+            tra_quar = []
+            for i in range(Nt):
+                temp = tr.quaternion_from_euler(tra_euler[i][0], tra_euler[i][1], tra_euler[i][2])
+                tra_quar.append(temp.tolist())
+            tra = np.concatenate((tra[0:Nt, 0:3], tra_quar), axis=1)
+            return tra, Nt
+        else:
+            return tra, Nt
+
+    def _main(self):
+        tra1, Nt1 = self._trajectory(self._filename1, euler=True)
+        tra2, Nt2 = self._trajectory(self._filename2, euler=True)
+
+        # 将示教轨迹作为起点和终点
+        start_point = tra1[0]
+        end_point = tra2[-1]
+
+        # 生成擦拭运动轨迹
+        num_waypoints = 10
+        waypoints = np.linspace(start_point, end_point, num_waypoints)
+        wiping_trajectory = np.vstack((start_point, waypoints, end_point))
+
+        # 执行擦拭运动轨迹
+        self.execute_trajectory(wiping_trajectory)
+
+    def execute_trajectory(self, trajectory):
+        pid_controller = PIDController(kp=1.0, ki=0.0, kd=0.0)  # 设置适当的PID参数
+
+        for point in trajectory:
+            position_ik = point[:3]
+            quaternion_ik = point[3:]
+            angles = self._kin.inverse_kinematics(position_ik, quaternion_ik)
+
+            # 控制器计算控制输出
+            current_position = np.array(self._arm.endpoint_pose()['position'])
+            error = position_ik - current_position
+            control_output = pid_controller.compute_control_output(error, dt=0.01)  # 设置适当的时间步长
+
+            # 将控制输出添加到关节角度上
+            angles = {joint: angle + control_output for joint, angle in angles.items()}
+
+            self.set_joint_angles(angles)
+
+def main():
+    rospy.init_node('wiping_robot')
+
+    # 初始化Baxter机器人
+    limb = 'right'  # 根据实际情况设置机械臂名称
+    baxter_dmp = BaxterDMP(limb)
+
+    rospy.spin()
+
+if __name__ == '__main__':
+    main()

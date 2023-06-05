@@ -1,0 +1,8 @@
+运行 copyUNET-live10.py 文件，做模型加载和图像分割，以下是 copyUNET-live10.py
+第二步，将2D坐标映射到Kinect坐标系下的3D点，运行kinect_3d_mapping.py
+运行kinect_to_baxter_mapping.py
+kinect_to_baxter_mapping.py调用了Baxter_DMP.py
+开始生成擦拭运动轨迹并让机器人执行该轨迹来擦拭人体背部皮肤。运行wiping_robot.py
+
+
+1.txt的可以随便看看
