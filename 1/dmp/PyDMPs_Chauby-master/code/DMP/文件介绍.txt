@@ -1,0 +1,2 @@
+DMP2pi.py是我改动过的
+dmp_discrete.py是原始的
